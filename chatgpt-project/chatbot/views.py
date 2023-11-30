@@ -1,3 +1,6 @@
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions
 from django.shortcuts import render
 from django.views import View
 from dotenv import load_dotenv
@@ -10,17 +13,21 @@ load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 
-class ChatbotView(View):
+class ChatbotView(APIView):
+    #permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'chatbot'
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request):
+        user = request.user
         conversations = request.session.get('conversations', [])
-        return render(request, 'chat.html', {'conversations': conversations})
+        return Response({'conversations': conversations}, status=status.HTTP_200_OK)
 
-    def post(self, request, *args, **kwargs):
-        prompt = request.POST.get('prompt')
+    def post(self, request):
+        prompt = request.data.get('prompt')
         if prompt:
+            user = request.user
+
             # 이전 대화 기록 가져오기
             session_conversations = request.session.get('conversations', [])
             previous_conversations = "\n".join([f"User: {c['prompt']}\nAI: {c['response']}" for c in session_conversations])
@@ -45,4 +52,17 @@ class ChatbotView(View):
             request.session['conversations'] = session_conversations
             request.session.modified = True
 
-        return self.get(request, *args, **kwargs)
+            return Response({'prompt': prompt, 'response': response}, status=status.HTTP_200_OK)
+        return Response({'error': 'Prompt field is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+class ClearChatView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        try:
+            return Response({'message': '대화가 삭제되었습니다.'}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({'message': '삭제에 실패하였습니다.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
